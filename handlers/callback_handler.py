@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime
 from notion.update_book import update_book_in_notion
+from notion.create_book import create_book_in_notion
 from keyboards.inline_keyboard import build_book_buttons
 from utils.parsing import get_year, get_title
 
@@ -32,34 +33,26 @@ async def callback_handler_func(update: Update, context: ContextTypes.DEFAULT_TY
         status = book['properties'].get("Status", {}).get("select", {}).get("name", "")
 
         if status == "Not started":
-            # Меняем статус на "In progress" и ставим дату начала сегодня
             today = datetime.now().strftime("%Y-%m-%d")
             updated = await update_book_in_notion(book_id, {
                 "Status": {"select": {"name": "In progress"}},
                 "Date start": {"date": {"start": today}}
             })
             if updated:
-                await query.edit_message_text(
-                    "📚 Книга переведена в статус «В процессе»."
-                )
+                await query.edit_message_text("📚 Книга переведена в статус «В процессе».")
             else:
-                await query.edit_message_text(
-                    "❗ Ошибка при обновлении книги."
-                )
+                await query.edit_message_text("❗ Ошибка при обновлении книги.")
             return
 
         if status == "In progress":
-            # Отметить книгу прочитанной и запросить оценку
             today = datetime.now().strftime("%Y-%m-%d")
             updated = await update_book_in_notion(book_id, {
                 "Status": {"select": {"name": "Done"}},
                 "Date finished": {"date": {"start": today}}
             })
-
             if updated:
                 context.user_data["selected_book_id"] = book_id
                 context.user_data["state"] = "awaiting_rating"
-                print(f"DEBUG: Set state='awaiting_rating' for book_id={book_id}")
                 await query.edit_message_text(
                     "📚 Книга отмечена как прочитанная.\nВведите вашу оценку (от 1 до 10):"
                 )
@@ -67,7 +60,7 @@ async def callback_handler_func(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.edit_message_text("❗ Ошибка при обновлении книги.")
             return
 
-        # Показываем детальную информацию по книге
+        # Детали книги
         title = get_title(book)
         author = book['properties'].get('Author', {}).get('select', {}).get('name', 'Неизвестен')
         score = book['properties'].get('Score', {}).get('select', {}).get('name', 'Нет оценки')
@@ -84,3 +77,30 @@ async def callback_handler_func(update: Update, context: ContextTypes.DEFAULT_TY
             f"📝 Комментарий: {comments}"
         )
         await query.edit_message_text(msg, parse_mode="HTML")
+        return
+
+    if data.startswith("author_"):
+        author = data[len("author_"):]  # Получаем автора из callback_data
+        context.user_data["selected_author"] = author
+
+        if context.user_data.get("state") == "awaiting_new_book_author":
+            title = context.user_data.get("new_book_title")
+            year = datetime.now().year
+
+            success = await create_book_in_notion(
+                title=title,
+                author=author,
+                status="Not started",
+                year=year
+            )
+
+            context.user_data.clear()
+
+            if success:
+                await query.edit_message_text(f"Книга «{title}» добавлена ✅")
+            else:
+                await query.edit_message_text("Произошла ошибка. Попробуйте позже.")
+        else:
+            # Если не в режиме добавления книги, просто показываем выбранного автора
+            await query.edit_message_text(f"Выбран автор: {author}")
+        return

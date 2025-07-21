@@ -32,6 +32,11 @@ async def create_book_in_notion(title: str, author: str, status: str, year: int)
                     "name": author
                 }
             },
+            "Type": {
+                "select": {
+                    "name": "Book"
+                }
+            },
             "Status": {
                 "select": {"name": status}
             },

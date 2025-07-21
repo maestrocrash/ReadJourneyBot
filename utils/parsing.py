@@ -11,6 +11,8 @@ def get_status_from_text(text):
     return mapping.get(text)
 
 def get_title(book):
-    title_parts = book['properties']['Name']['title']
-    full_title = "".join(part['plain_text'] for part in title_parts)
-    return full_title
+    title_prop = book['properties'].get('Name', {}).get('title', [])
+    if title_prop:
+        # Собираем plain_text из всех частей и объединяем в одну строку
+        return "".join(part['plain_text'] for part in title_prop)
+    return "Без названия"
